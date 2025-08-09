@@ -1,6 +1,3 @@
-
-
-
 // main.cpp
 #include "AutoDescribe.hpp"
 #include "JsonCodec.hpp"

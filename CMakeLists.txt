@@ -29,9 +29,16 @@ endif()
 # --------------------------------------------------------------------------
 if (WIN32 AND MINGW)
   message(STATUS "Detected Windows (MinGW)")
-  # 필요 시 MinGW 전용 링크/정의
-  # target_link_libraries(… ws2_32 bcrypt iphlpapi)
+
+  # vcpkg 설치 루트 경로 변수 (보통 사용자 계정 홈 경로)
+  # set(VCPKG_ROOT "C:/Users/j2dol")
+  set(VCPKG_ROOT $ENV{USERPROFILE})
+
+  # vcpkg toolchain 설정 (MingW64 static)
+  set(CMAKE_PREFIX_PATH    "${VCPKG_ROOT}/vcpkg/installed/x64-mingw-static")
+  set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}/vcpkg/scripts/buildsystems/vcpkg.cmake")
 endif()
+
 
 # --------------------------------------------------------------------------
 # Linux (배포판 감지)
