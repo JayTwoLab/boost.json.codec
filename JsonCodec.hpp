@@ -1,0 +1,160 @@
+// JsonCodec.hpp
+// Boost.JSON + Boost.Describe 래퍼 (헤더 전용, Boost 1.88 호환)
+#pragma once
+#include <boost/json.hpp>
+#include <boost/describe.hpp>
+#include <boost/mp11.hpp>
+#include <type_traits>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <stdexcept>
+
+namespace json = boost::json;
+namespace bd   = boost::describe;
+namespace mp11 = boost::mp11;
+
+// Boost 1.88: has_describe_members<T> (접근자 인자 없음)
+template<class T>
+using EnableIfDescribed = std::enable_if_t<bd::has_describe_members<T>::value>;
+
+// describe된 타입 공통 직렬화 (struct -> JSON)
+template<class T, class = EnableIfDescribed<T>>
+void tag_invoke(json::value_from_tag, json::value& jv, T const& t) {
+    json::object obj;
+    using Members = bd::describe_members<T, bd::mod_public>;
+    mp11::mp_for_each<Members>([&](auto D){
+        obj[D.name] = json::value_from(t.*(D.pointer));
+    });
+    jv = std::move(obj);
+}
+
+class JsonCodec {
+public:
+    enum class MissingPolicy { Strict, Lenient };
+
+    // 간단 프리터(문자열 기반 pretty): 작은 유틸
+    static std::string simple_pretty(std::string s, int indent = 2) {
+        std::string out; out.reserve(s.size() + s.size()/4);
+        int level = 0; bool in_str = false; bool esc = false;
+        for (char c : s) {
+            if (in_str) {
+                out.push_back(c);
+                if (esc) { esc = false; }
+                else if (c == '\\') { esc = true; }
+                else if (c == '"') { in_str = false; }
+                continue;
+            }
+            switch (c) {
+            case '"': in_str = true; out.push_back(c); break;
+            case '{': case '[':
+                out.push_back(c);
+                out.push_back('\n');
+                ++level;
+                out.append(level*indent, ' ');
+                break;
+            case '}': case ']':
+                out.push_back('\n');
+                if (level > 0) --level;
+                out.append(level*indent, ' ');
+                out.push_back(c);
+                break;
+            case ',':
+                out.push_back(c);
+                out.push_back('\n');
+                out.append(level*indent, ' ');
+                break;
+            case ':':
+                out.push_back(c);
+                out.push_back(' ');
+                break;
+            default:
+                if (!(c==' ' || c=='\n' || c=='\t' || c=='\r')) out.push_back(c);
+                break;
+            }
+        }
+        return out;
+    }
+
+    template<class T, class = EnableIfDescribed<T>>
+    static json::value toValue(const T& obj) {
+        return json::value_from(obj);
+    }
+
+    template<class T, class = EnableIfDescribed<T>>
+    static T fromValue(const json::value& jv, MissingPolicy policy = MissingPolicy::Strict) {
+        if (!jv.is_object()) throw std::runtime_error("JSON 루트가 객체가 아닙니다.");
+        const json::object& obj = jv.as_object();
+
+        T out{};
+        using Members = bd::describe_members<T, bd::mod_public>;
+        mp11::mp_for_each<Members>([&](auto D){
+            using MemberType = std::remove_reference_t<decltype(std::declval<T&>().*D.pointer)>;
+            auto it = obj.find(D.name);
+            if (it == obj.end()) {
+                if (policy == MissingPolicy::Strict)
+                    throw std::runtime_error(std::string("필수 키 누락: ") + D.name);
+                return; // Lenient: 기본값 유지
+            }
+            try {
+                (out.*(D.pointer)) = json::value_to<MemberType>(it->value());
+            } catch (const std::exception& e) {
+                throw std::runtime_error(std::string("필드 변환 실패: ") + D.name + " - " + e.what());
+            }
+        });
+        return out;
+    }
+
+    template<class T, class = EnableIfDescribed<T>>
+    static std::string toString(const T& obj, bool pretty = true) {
+        std::string s = json::serialize(toValue(obj)); // compact
+        return pretty ? simple_pretty(std::move(s)) : s;
+    }
+
+    template<class T, class = EnableIfDescribed<T>>
+    static T fromString(const std::string& s, MissingPolicy policy = MissingPolicy::Strict) {
+        boost::system::error_code ec;
+        json::value v = json::parse(s, ec);
+        if (ec) throw std::runtime_error("JSON 파싱 실패: " + ec.message());
+        return fromValue<T>(v, policy);
+    }
+
+    template<class T, class = EnableIfDescribed<T>>
+    static void saveFile(const std::string& path, const T& obj, bool pretty = true) {
+        saveValue(path, toValue(obj), pretty);
+    }
+
+    template<class T, class = EnableIfDescribed<T>>
+    static T loadFile(const std::string& path, MissingPolicy policy = MissingPolicy::Strict) {
+        return fromValue<T>(loadValue(path), policy);
+    }
+
+    static std::string dump(const json::value& v, bool pretty = true) {
+        std::string s = json::serialize(v); // compact
+        return pretty ? simple_pretty(std::move(s)) : s;
+    }
+
+    static json::value parse(const std::string& s) {
+        boost::system::error_code ec;
+        json::value v = json::parse(s, ec);
+        if (ec) throw std::runtime_error("JSON 파싱 실패: " + ec.message());
+        return v;
+    }
+
+    static void saveValue(const std::string& path, const json::value& v, bool pretty = true) {
+        std::ofstream ofs(path, std::ios::binary);
+        if (!ofs) throw std::runtime_error("파일을 쓸 수 없습니다: " + path);
+        std::string s = dump(v, pretty);
+        ofs.write(s.data(), static_cast<std::streamsize>(s.size()));
+    }
+
+    static json::value loadValue(const std::string& path) {
+        std::ifstream ifs(path, std::ios::binary);
+        if (!ifs) throw std::runtime_error("파일을 열 수 없습니다: " + path);
+        std::string s((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        boost::system::error_code ec;
+        json::value v = json::parse(s, ec);
+        if (ec) throw std::runtime_error("JSON 파싱 실패: " + ec.message());
+        return v;
+    }
+};
