@@ -2,25 +2,23 @@
 
 #include "model.hpp"
 #include "AutoDescribe.hpp"
-#include "JsonCodec.hpp"
+#include "describe_all.gen.hpp"   // describe 먼저
+#include "JsonCodec.hpp"          // 그다음 JsonCodec
 
 #include <iostream>
 #include <string>
 #include <vector>
 
-// 생성된 describe/시퀀스 매크로는 마지막에 포함
-#include "describe_all.gen.hpp"
-
 int main() {
     try {
-        User u1{
+        hello::world::User u1{
             "홍길동",
             29,
             true,
-            Profile{"hong@example.com", 98.5},
+            hello::world::Profile{"hong@example.com", 98.5},
             {
-                Project{"VisionAI", {"rtsp", "opencv", "tracking"}},
-                Project{"Backend",  {"cpp", "asio", "protobuf"}}
+                hello::world::Project{"VisionAI", {"rtsp", "opencv", "tracking"}},
+                hello::world::Project{"Backend",  {"cpp", "asio", "protobuf"}}
             }
         };
 
@@ -37,7 +35,10 @@ int main() {
                 { "title": "Network", "tags": ["cpp", "boost", "http"] }
             ]
         })";
-        User u2 = JsonCodec::fromString<User>(js, JsonCodec::MissingPolicy::Strict);
+
+        hello::world::User u2 =
+            JsonCodec::fromString<hello::world::User>(js, JsonCodec::MissingPolicy::Strict);
+
         std::cout << "[JSON -> User] "
                   << "name="   << u2.name
                   << ", age="  << u2.age
@@ -50,9 +51,14 @@ int main() {
         }
 
         JsonCodec::saveFile("user.json", u1, true);
-        User u3 = JsonCodec::loadFile<User>("user.json", JsonCodec::MissingPolicy::Lenient);
+
+        hello::world::User u3 =
+            JsonCodec::loadFile<hello::world::User>("user.json", JsonCodec::MissingPolicy::Lenient);
+
         std::cout << "[파일 로드] name=" << u3.name
                   << ", projects=" << u3.projects.size() << "개\n";
+
+        NonNamespaceProfile nnp1;
 
     } catch (const std::exception& e) {
         std::cerr << "[오류] " << e.what() << "\n";

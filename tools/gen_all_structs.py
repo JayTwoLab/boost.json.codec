@@ -1,123 +1,192 @@
-# tools/gen_all_structs.py
-# 목적: 지정한 헤더(예: model.hpp) 안에 "정의된" struct/class만 찾아
-#       BOOST_DESCRIBE_STRUCT(...) 라인을 생성해 describe_all.gen.hpp로 출력
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Generate Boost.Describe declarations for all struct/class definitions
+found in a target header file (and only that header).
+
+Output format:
+  - A single header (UTF-8) that opens the corresponding namespaces
+    and calls BOOST_DESCRIBE_STRUCT(Type, (), (field1, field2, ...)).
+
+Notes:
+  - We filter cursors by location.file == target header to avoid pulling
+    system decls (e.g., CRT stuff).
+  - Fields are collected via CursorKind.FIELD_DECL.
+  - This script writes the file directly with UTF-8 (no stdout redirection).
+"""
 
 import os
 import sys
 import argparse
 from clang.cindex import Index, Config, CursorKind
 
-def setup_libclang(path_from_cli: str | None):
-    # 1) --libclang 인자 우선
-    if path_from_cli and os.path.isfile(path_from_cli):
-        Config.set_library_file(path_from_cli)
-        return
-    # 2) 환경변수 LIBCLANG_PATH
-    env = os.environ.get("LIBCLANG_PATH")
-    if env and os.path.isfile(env):
-        Config.set_library_file(env)
-        return
-    # 3) 흔한 설치 경로 몇 곳 시도(Windows)
-    candidates = [
-        rf"C:\Users\{os.environ.get('USERNAME','')}\scoop\apps\llvm\current\bin\libclang.dll",
-        r"C:\Program Files\LLVM\bin\libclang.dll",
-        r"C:\Program Files (x86)\LLVM\bin\libclang.dll",
-    ]
-    for c in candidates:
-        if os.path.isfile(c):
-            Config.set_library_file(c)
-            return
-    # 다른 OS라면 시스템 기본 탐색에 맡김 (설치 안돼 있으면 이후에서 예외 발생)
-
 def parse_args():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--libclang", default=None, help="libclang.dll 전체 경로 (선택)")
-    ap.add_argument("header", help="스캔할 헤더 파일 경로 (예: model.hpp)")
+    ap = argparse.ArgumentParser(description="Generate Boost.Describe macros for all structs in a header.")
+    ap.add_argument("--libclang", required=True, help="Path to libclang shared library (e.g., libclang.dll)")
+    ap.add_argument("--out", required=True, help="Output header path")
+    ap.add_argument("header", help="Target header (e.g., model.hpp)")
+    # Optional: pass extra include dirs, std, etc., if needed later
+    ap.add_argument("--std", default="c++20", help="C++ standard (default: c++20)")
+    ap.add_argument("-I", dest="includes", action="append", default=[], help="Additional include directories")
     return ap.parse_args()
 
-def norm(p: str) -> str:
-    return os.path.normcase(os.path.normpath(os.path.abspath(p)))
+def set_libclang(path):
+    path = os.path.abspath(path)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"libclang not found: {path}")
+    Config.set_library_file(path)
 
-def samefile(a: str, b: str) -> bool:
+def is_from_target_header(cursor, target_abs):
+    """
+    Check if cursor location originates from the given header path.
+    """
     try:
-        return norm(a) == norm(b)
+        loc = cursor.location
+        if not loc or not loc.file:
+            return False
+        cur_path = os.path.abspath(loc.file.name)
+        return os.path.normcase(cur_path) == os.path.normcase(target_abs)
     except Exception:
         return False
 
-def in_this_header(node, header_abs: str) -> bool:
-    loc = node.location
-    if not loc or not loc.file:
-        return False
-    return samefile(loc.file.name, header_abs)
+def get_qualified_name(cursor):
+    """
+    Build a (namespace_parts, type_name) pair.
+    Example: namespace hello { struct User { ... }; }
+    returns (["hello"], "User")
+    """
+    ns_parts = []
+    cur = cursor.semantic_parent
+    while cur is not None and cur.kind != CursorKind.TRANSLATION_UNIT:
+        if cur.kind == CursorKind.NAMESPACE and cur.spelling:
+            ns_parts.append(cur.spelling)
+        cur = cur.semantic_parent
+    ns_parts.reverse()
+    return ns_parts, cursor.spelling
 
-def iter_nodes(root):
-    # DFS
-    stack = [root]
-    while stack:
-        n = stack.pop()
-        yield n
-        stack.extend(reversed(list(n.get_children())))
+def collect_structs(tu, target_abs):
+    """
+    Traverse AST and collect user-defined struct/class declarations
+    from the target header only. Returns list of:
+      { "ns": ["hello"], "name": "User", "fields": ["name","age",...]}
+    """
+    result = []
 
-def is_target_record(c):
-    if c.kind not in (CursorKind.STRUCT_DECL, CursorKind.CLASS_DECL):
-        return False
-    if not c.is_definition():
-        return False
-    if not c.spelling:
-        return False
-    # 시스템/런타임 내부 심볼 제외
-    if c.spelling.startswith("_"):
-        return False
-    return True
+    def visit(c):
+        # Recurse
+        for ch in c.get_children():
+            visit(ch)
 
-def collect_field_names(c):
-    names = []
-    for f in c.get_children():
-        if f.kind == CursorKind.FIELD_DECL and f.spelling:
-            names.append(f.spelling)
-    return names
+        # Interested in struct/class only
+        if c.kind not in (CursorKind.STRUCT_DECL, CursorKind.CLASS_DECL):
+            return
+        if not c.is_definition():
+            return
+        if not c.spelling:  # anonymous
+            return
+        if not is_from_target_header(c, target_abs):
+            return
+
+        # Collect fields (public by default for struct; libclang does not always expose access reliably)
+        fields = []
+        for mem in c.get_children():
+            if mem.kind == CursorKind.FIELD_DECL and mem.spelling:
+                # Keep only fields from the same header (guard against injected/system members)
+                if is_from_target_header(mem, target_abs):
+                    fields.append(mem.spelling)
+
+        ns, name = get_qualified_name(c)
+        result.append({"ns": ns, "name": name, "fields": fields})
+
+    visit(tu.cursor)
+
+    # Deduplicate by (ns tuple, name)
+    seen = set()
+    uniq = []
+    for item in result:
+        key = (tuple(item["ns"]), item["name"])
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(item)
+    return uniq
+
+def generate_header(structs):
+    """
+    Render a single header with namespace blocks and BOOST_DESCRIBE_STRUCT lines.
+    """
+    lines = []
+    lines.append("// This file is generated by gen_all_structs.py - DO NOT EDIT")
+    lines.append("#pragma once")
+    lines.append("")
+    lines.append("#include <boost/describe.hpp>")
+    lines.append("")
+
+    # Group by namespace list
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for s in structs:
+        groups[tuple(s["ns"])].append(s)
+
+    def open_namespaces(ns_parts):
+        for ns in ns_parts:
+            lines.append(f"namespace {ns} {{")
+    def close_namespaces(ns_parts):
+        for ns in reversed(ns_parts):
+            lines.append(f"}} // namespace {ns}")
+
+    # Sort for deterministic output
+    for ns_parts in sorted(groups.keys(), key=lambda t: (len(t), t)):
+        items = sorted(groups[ns_parts], key=lambda x: x["name"])
+        if ns_parts:
+            open_namespaces(ns_parts)
+            lines.append("")
+
+        for it in items:
+            fields = it["fields"]
+            field_list = ", ".join(fields) if fields else ""
+            # Describe only if we have at least one field; Boost.Describe allows empty too, but usually not useful.
+            lines.append(f"BOOST_DESCRIBE_STRUCT({it['name']}, (), ({field_list}))")
+
+        if ns_parts:
+            lines.append("")
+            close_namespaces(ns_parts)
+            lines.append("")
+
+    # Final newline
+    lines.append("")
+    return "\n".join(lines)
 
 def main():
     args = parse_args()
-    setup_libclang(args.libclang)
+    set_libclang(args.libclang)
 
-    header_abs = norm(args.header)
-    if not os.path.isfile(header_abs):
-        print(f"// error: header not found: {args.header}", file=sys.stderr)
-        sys.exit(2)
+    header_abs = os.path.abspath(args.header)
+    if not os.path.exists(header_abs):
+        print(f"[error] header not found: {header_abs}", file=sys.stderr)
+        sys.exit(1)
 
     index = Index.create()
-    # include 경로 힌트: 헤더가 있는 폴더 우선 포함
-    header_dir = os.path.dirname(header_abs)
-    tu = index.parse(
-        args.header,
-        args=[
-            "-x", "c++",
-            "-std=c++20",
-            f"-I{header_dir}",
-            "-I.",  # 프로젝트 루트에서 실행될 수도 있으니
-        ],
-    )
+    clang_args = [
+        "-x", "c++",
+        f"-std={args.std}",
+        "-D__CODEGEN__=1",
+        f"-I{os.path.dirname(header_abs)}",
+    ]
+    for inc in args.includes:
+        clang_args.append(f"-I{inc}")
 
-    # 출력 시작
-    print("#pragma once")
-    print("#include <boost/describe.hpp>")
+    # Parse (note: we parse the header directly; warnings like '#pragma once in main file' are harmless)
+    tu = index.parse(header_abs, args=clang_args)
 
-    seen = set()
-    for n in iter_nodes(tu.cursor):
-        if not is_target_record(n):
-            continue
-        if not in_this_header(n, header_abs):
-            continue
-        name = n.spelling
-        if name in seen:
-            continue
-        fields = collect_field_names(n)
-        if not fields:
-            continue
-        seen.add(name)
-        joined = ", ".join(fields)
-        print(f"BOOST_DESCRIBE_STRUCT({name}, (), ({joined}))")
+    targets = collect_structs(tu, header_abs)
+    text = generate_header(targets)
+
+    out_path = os.path.abspath(args.out)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
 
 if __name__ == "__main__":
     main()

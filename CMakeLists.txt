@@ -1,4 +1,3 @@
-# CMakeLists.txt
 cmake_minimum_required(VERSION 3.30)
 project(boost_json_autodescribe_demo LANGUAGES CXX)
 
@@ -6,23 +5,15 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Boost FindPackage 모듈 제거 정책(경고 억제)
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW)
 endif()
 
-# -----------------------------
-# Windows + MSVC (필요 시 유지)
-# -----------------------------
+# ---- vcpkg (요청하신 MinGW 블록 그대로 유지) ----
 if (WIN32 AND MSVC)
-  set(VCPKG_ROOT $ENV{USERPROFILE})
-  set(CMAKE_PREFIX_PATH    "${VCPKG_ROOT}/vcpkg/installed/x64-windows")
-  set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}/vcpkg/scripts/buildsystems/vcpkg.cmake")
+  # MSVC 전용 설정 필요시 여기에
 endif()
 
-# ---------------------------------------
-# Windows + MinGW (절대 삭제하지 말 것)
-# ---------------------------------------
 if (WIN32 AND MINGW)
   message(STATUS "Detected Windows (MinGW)")
   set(VCPKG_ROOT $ENV{USERPROFILE})
@@ -30,9 +21,7 @@ if (WIN32 AND MINGW)
   set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}/vcpkg/scripts/buildsystems/vcpkg.cmake")
 endif()
 
-# -----------------------------
-# Linux 정보 출력(선택적)
-# -----------------------------
+# (선택) Linux 감지
 if(UNIX AND NOT WIN32)
   message(STATUS "Detected Linux")
   if (EXISTS "/etc/os-release")
@@ -42,78 +31,89 @@ if(UNIX AND NOT WIN32)
     elseif (OS_RELEASE_CONTENT MATCHES "ID=fedora")
       message(STATUS "Detected Fedora")
     elseif (OS_RELEASE_CONTENT MATCHES "ID=rhel")
-      message(STATUS "Detected RHEL")
+      message(STATUS "Detected Red Hat Enterprise Linux")
+    else()
+      message(STATUS "Detected Other Linux")
     endif()
   endif()
 endif()
 
-# -----------------------------
-# Python3 (gen 스크립트 실행용)
-# -----------------------------
+# ---- Python / libclang ----
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-# -----------------------------
-# libclang 경로 (선택 입력)
-# - 환경변수 LIBCLANG_PATH가 있으면 우선
-# - 없으면 CMake 변수 LIBCLANG_DLL 로 지정 가능
-# -----------------------------
-set(_LIBCLANG_FROM_ENV "$ENV{LIBCLANG_PATH}")
-if(NOT LIBCLANG_DLL AND _LIBCLANG_FROM_ENV)
-  set(LIBCLANG_DLL "${_LIBCLANG_FROM_ENV}")
+if (WIN32 AND NOT DEFINED LIBCLANG_DLL)
+  if (EXISTS "$ENV{USERPROFILE}/scoop/apps/llvm/current/bin/libclang.dll")
+    set(LIBCLANG_DLL "$ENV{USERPROFILE}/scoop/apps/llvm/current/bin/libclang.dll")
+  elseif (EXISTS "C:/Program Files/LLVM/bin/libclang.dll")
+    set(LIBCLANG_DLL "C:/Program Files/LLVM/bin/libclang.dll")
+  endif()
 endif()
-message(STATUS "LIBCLANG_DLL='${LIBCLANG_DLL}'")
 
-# -----------------------------
-# Boost::json (CONFIG 모드)
-# -----------------------------
+if (WIN32 AND NOT LIBCLANG_DLL)
+  message(FATAL_ERROR "LIBCLANG_DLL 경로를 지정해 주세요. 예) -DLIBCLANG_DLL=C:/Users/<you>/scoop/apps/llvm/current/bin/libclang.dll")
+endif()
+
+# ---- Boost(JSON) ----
 find_package(Boost 1.75 CONFIG REQUIRED COMPONENTS json)
 
-# -----------------------------
-# 코드 생성: describe_all.gen.hpp
-#  - model.hpp에 '정의된' struct만 기술
-#  - 생성물을 소스 디렉터리에 둠
-# -----------------------------
-set(DESCRIBE_OUT ${CMAKE_CURRENT_SOURCE_DIR}/describe_all.gen.hpp)
+# ---- 경로/파일 ----
+set(SRC_DIR      "${CMAKE_CURRENT_SOURCE_DIR}")
+set(TOOL_DIR     "${SRC_DIR}/tools")
+set(MODEL_HEADER "${SRC_DIR}/model.hpp")
+# 요청대로 소스 트리에 생성
+set(GEN_HEADER   "${SRC_DIR}/describe_all.gen.hpp")
 
+# 생성물 표시
+set_source_files_properties("${GEN_HEADER}" PROPERTIES GENERATED TRUE)
+
+# ---- 생성 규칙: OUTPUT 한 번만 정의 ----
 add_custom_command(
-  OUTPUT  ${DESCRIBE_OUT}
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_all_structs.py
-          --libclang "${LIBCLANG_DLL}"
-          ${CMAKE_SOURCE_DIR}/model.hpp
-          > ${DESCRIBE_OUT}
-  DEPENDS ${CMAKE_SOURCE_DIR}/model.hpp
-          ${CMAKE_SOURCE_DIR}/tools/gen_all_structs.py
+  OUTPUT "${GEN_HEADER}"
+  COMMAND ${CMAKE_COMMAND} -E env PYTHONUTF8=1
+          "${Python3_EXECUTABLE}" "${TOOL_DIR}/gen_all_structs.py"
+            --libclang "${LIBCLANG_DLL}"
+            --out "${GEN_HEADER}"
+            --std c++20
+            -I "${SRC_DIR}"
+            "${MODEL_HEADER}"
+  DEPENDS "${MODEL_HEADER}" "${TOOL_DIR}/gen_all_structs.py"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  COMMENT "Generating describe_all.gen.hpp from model.hpp"
   VERBATIM
 )
 
-add_custom_target(gen_describe ALL
-  DEPENDS ${DESCRIBE_OUT}
-)
+# 이 타깃은 파일 생성 결과에만 의존
+add_custom_target(gen_describe DEPENDS "${GEN_HEADER}")
 
-# -----------------------------
-# 실행 파일
-# -----------------------------
+# ---- 실행 파일 ----
 add_executable(demo
-  main.cpp
-  model.hpp
-  AutoDescribe.hpp
-  JsonCodec.hpp
-  ${DESCRIBE_OUT}          # IDE 노출용(실제 빌드에는 영향 없음)
+  "${SRC_DIR}/main.cpp"
+  "${SRC_DIR}/AutoDescribe.hpp"
+  "${SRC_DIR}/JsonCodec.hpp"
+  "${SRC_DIR}/model.hpp"
+  "${GEN_HEADER}"
 )
 
 add_dependencies(demo gen_describe)
+target_link_libraries(demo PRIVATE Boost::json)
 
-target_include_directories(demo PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-target_link_libraries(demo PRIVATE
-  Boost::json
-)
-
-# 경고 옵션(원하시면 조정)
 if (MSVC)
-  target_compile_options(demo PRIVATE /W4)
+  target_compile_options(demo PRIVATE /W4 /permissive-)
 else()
   target_compile_options(demo PRIVATE -Wall -Wextra -Wpedantic -Wno-variadic-macros)
 endif()
+
+# ---- IDE 전용 파일 노출 ----
+set(IDE_ONLY_FILES
+  "${TOOL_DIR}/gen_all_structs.py"
+  "${TOOL_DIR}/gen_fields.py"
+  "${TOOL_DIR}/make_describe.cmd"
+  "${TOOL_DIR}/make_describe.ps1"
+  "${TOOL_DIR}/make_describe.sh"
+)
+target_sources(demo PRIVATE ${IDE_ONLY_FILES})
+foreach(f IN LISTS IDE_ONLY_FILES)
+  if (EXISTS "${f}")
+    set_source_files_properties("${f}" PROPERTIES HEADER_FILE_ONLY TRUE)
+  endif()
+endforeach()
