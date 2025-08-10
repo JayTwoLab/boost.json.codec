@@ -1,46 +1,47 @@
-# Prerequisites
-*.d
+# .gitignore (프로젝트 루트)
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# 빌드 디렉터리
+/build/
+/build-*/
 
-# Precompiled Headers
-*.gch
-*.pch
+# CMake/Ninja 생성물
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+build.ninja
+rules.ninja
+compile_commands.json
+_testing/
+_testing*/
 
-# Linker files
-*.ilk
+# Qt Creator / IDE
+*.user
+*.user.*
+*.pro.user
+*.pro.user.*
+*.autosave
+/.idea/
+/.vscode/
+/.vs/
 
-# Debugger Files
-*.pdb
+# 자동 생성 헤더(소스 디렉터리에 생성됨)
+describe_all.gen.hpp
+*.gen.hpp
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
+# OS 잡파일
+.DS_Store
+Thumbs.db
 
-# Fortran module files
-*.mod
-*.smod
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.venv*/
+.env
+.env*/
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
-
-# debug information files
-*.dwo
-
-CMakeLists.txt.user
-
-build/
-build/*
+# 기타 캐시
+.cache/
