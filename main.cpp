@@ -2,8 +2,8 @@
 
 #include "model.hpp"
 #include "AutoDescribe.hpp"
-#include "describe_all.gen.hpp"   // describe 먼저
-#include "JsonCodec.hpp"          // 그다음 JsonCodec
+#include "describe_all.gen.hpp"   // describe first
+#include "JsonCodec.hpp"          // then JsonCodec
 
 #include <iostream>
 #include <string>
@@ -12,7 +12,7 @@
 int main() {
     try {
         hello::world::User u1{
-            "홍길동",
+            "Hong Gil-dong",
             29,
             true,
             hello::world::Profile{"hong@example.com", 98.5},
@@ -26,7 +26,7 @@ int main() {
         std::cout << "[User -> JSON]\n" << s1 << "\n\n";
 
         const char* js = R"({
-            "name": "이몽룡",
+            "name": "Lee Mong-ryong",
             "age": 21,
             "admin": false,
             "profile": { "email": "lee@example.com", "score": 91.2 },
@@ -45,9 +45,9 @@ int main() {
                   << ", admin="<< (u2.admin ? "true":"false")
                   << ", email="<< u2.profile.email
                   << ", score="<< u2.profile.score
-                  << ", projects=" << u2.projects.size() << "개\n";
+                  << ", projects=" << u2.projects.size() << " items\n";
         if (!u2.projects.empty()) {
-            std::cout << "  첫 프로젝트: " << u2.projects[0].title << "\n";
+            std::cout << "  First project: " << u2.projects[0].title << "\n";
         }
 
         JsonCodec::saveFile("user.json", u1, true);
@@ -55,13 +55,13 @@ int main() {
         hello::world::User u3 =
             JsonCodec::loadFile<hello::world::User>("user.json", JsonCodec::MissingPolicy::Lenient);
 
-        std::cout << "[파일 로드] name=" << u3.name
-                  << ", projects=" << u3.projects.size() << "개\n";
+        std::cout << "[File Load] name=" << u3.name
+                  << ", projects=" << u3.projects.size() << " items\n";
 
         NonNamespaceProfile nnp1;
 
     } catch (const std::exception& e) {
-        std::cerr << "[오류] " << e.what() << "\n";
+        std::cerr << "[Error] " << e.what() << "\n";
         return 1;
     }
     return 0;

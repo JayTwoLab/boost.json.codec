@@ -9,9 +9,9 @@ if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW)
 endif()
 
-# ---- vcpkg (요청하신 MinGW 블록 그대로 유지) ----
+# ---- vcpkg (Keep the requested MinGW block as is) ----
 if (WIN32 AND MSVC)
-  # MSVC 전용 설정 필요시 여기에
+  # Add MSVC-specific settings here if needed
 endif()
 
 if (WIN32 AND MINGW)
@@ -21,7 +21,7 @@ if (WIN32 AND MINGW)
   set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}/vcpkg/scripts/buildsystems/vcpkg.cmake")
 endif()
 
-# (선택) Linux 감지
+# (Optional) Detect Linux
 if(UNIX AND NOT WIN32)
   message(STATUS "Detected Linux")
   if (EXISTS "/etc/os-release")
@@ -50,23 +50,23 @@ if (WIN32 AND NOT DEFINED LIBCLANG_DLL)
 endif()
 
 if (WIN32 AND NOT LIBCLANG_DLL)
-  message(FATAL_ERROR "LIBCLANG_DLL 경로를 지정해 주세요. 예) -DLIBCLANG_DLL=C:/Users/<you>/scoop/apps/llvm/current/bin/libclang.dll")
+  message(FATAL_ERROR "Please specify the LIBCLANG_DLL path. Example: -DLIBCLANG_DLL=C:/Users/<you>/scoop/apps/llvm/current/bin/libclang.dll")
 endif()
 
 # ---- Boost(JSON) ----
 find_package(Boost 1.75 CONFIG REQUIRED COMPONENTS json)
 
-# ---- 경로/파일 ----
+# ---- Paths / Files ----
 set(SRC_DIR      "${CMAKE_CURRENT_SOURCE_DIR}")
 set(TOOL_DIR     "${SRC_DIR}/tools")
 set(MODEL_HEADER "${SRC_DIR}/model.hpp")
-# 요청대로 소스 트리에 생성
+# Create in the source tree as requested
 set(GEN_HEADER   "${SRC_DIR}/describe_all.gen.hpp")
 
-# 생성물 표시
+# Mark generated files
 set_source_files_properties("${GEN_HEADER}" PROPERTIES GENERATED TRUE)
 
-# ---- 생성 규칙: OUTPUT 한 번만 정의 ----
+# ---- Generation rule: define OUTPUT only once ----
 add_custom_command(
   OUTPUT "${GEN_HEADER}"
   COMMAND ${CMAKE_COMMAND} -E env PYTHONUTF8=1
@@ -82,10 +82,10 @@ add_custom_command(
   VERBATIM
 )
 
-# 이 타깃은 파일 생성 결과에만 의존
+# This target depends only on the generated file result
 add_custom_target(gen_describe DEPENDS "${GEN_HEADER}")
 
-# ---- 실행 파일 ----
+# ---- Executable ----
 add_executable(demo
   "${SRC_DIR}/main.cpp"
   "${SRC_DIR}/AutoDescribe.hpp"
@@ -103,7 +103,7 @@ else()
   target_compile_options(demo PRIVATE -Wall -Wextra -Wpedantic -Wno-variadic-macros)
 endif()
 
-# ---- IDE 전용 파일 노출 ----
+# ---- Expose IDE-only files ----
 set(IDE_ONLY_FILES
   "${TOOL_DIR}/gen_all_structs.py"
   "${TOOL_DIR}/gen_fields.py"

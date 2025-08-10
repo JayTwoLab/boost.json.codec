@@ -1,5 +1,5 @@
 // JsonCodec.hpp
-// Boost.JSON + Boost.Describe 래퍼 (헤더 전용, Boost 1.88 호환)
+// Boost.JSON + Boost.Describe wrapper (header-only, compatible with Boost 1.88)
 #pragma once
 
 #ifndef BOOST_JSON_CODEC_HPP
@@ -19,11 +19,11 @@ namespace json = boost::json;
 namespace bd   = boost::describe;
 namespace mp11 = boost::mp11;
 
-// Boost 1.88: has_describe_members<T> (접근자 인자 없음)
+// Boost 1.88: has_describe_members<T> (no accessor arguments)
 template<class T>
 using EnableIfDescribed = std::enable_if_t<bd::has_describe_members<T>::value>;
 
-// describe된 타입 공통 직렬화 (struct -> JSON)
+// Common serialization for described types (struct -> JSON)
 template<class T, class = EnableIfDescribed<T>>
 void tag_invoke(json::value_from_tag, json::value& jv, T const& t) {
     json::object obj;
@@ -38,7 +38,7 @@ class JsonCodec {
 public:
     enum class MissingPolicy { Strict, Lenient };
 
-    // 간단 프리터(문자열 기반 pretty): 작은 유틸
+    // Simple pretty printer (string-based pretty print): small utility
     static std::string simple_pretty(std::string s, int indent = 2) {
         std::string out; out.reserve(s.size() + s.size()/4);
         int level = 0; bool in_str = false; bool esc = false;
@@ -88,7 +88,7 @@ public:
 
     template<class T, class = EnableIfDescribed<T>>
     static T fromValue(const json::value& jv, MissingPolicy policy = MissingPolicy::Strict) {
-        if (!jv.is_object()) throw std::runtime_error("JSON 루트가 객체가 아닙니다.");
+        if (!jv.is_object()) throw std::runtime_error("JSON root is not an object.");
         const json::object& obj = jv.as_object();
 
         T out{};
@@ -98,13 +98,13 @@ public:
             auto it = obj.find(D.name);
             if (it == obj.end()) {
                 if (policy == MissingPolicy::Strict)
-                    throw std::runtime_error(std::string("필수 키 누락: ") + D.name);
-                return; // Lenient: 기본값 유지
+                    throw std::runtime_error(std::string("Missing required key: ") + D.name);
+                return; // Lenient: keep default value
             }
             try {
                 (out.*(D.pointer)) = json::value_to<MemberType>(it->value());
             } catch (const std::exception& e) {
-                throw std::runtime_error(std::string("필드 변환 실패: ") + D.name + " - " + e.what());
+                throw std::runtime_error(std::string("Field conversion failed: ") + D.name + " - " + e.what());
             }
         });
         return out;
@@ -120,7 +120,7 @@ public:
     static T fromString(const std::string& s, MissingPolicy policy = MissingPolicy::Strict) {
         boost::system::error_code ec;
         json::value v = json::parse(s, ec);
-        if (ec) throw std::runtime_error("JSON 파싱 실패: " + ec.message());
+        if (ec) throw std::runtime_error("JSON parsing failed: " + ec.message());
         return fromValue<T>(v, policy);
     }
 
@@ -142,24 +142,24 @@ public:
     static json::value parse(const std::string& s) {
         boost::system::error_code ec;
         json::value v = json::parse(s, ec);
-        if (ec) throw std::runtime_error("JSON 파싱 실패: " + ec.message());
+        if (ec) throw std::runtime_error("JSON parsing failed: " + ec.message());
         return v;
     }
 
     static void saveValue(const std::string& path, const json::value& v, bool pretty = true) {
         std::ofstream ofs(path, std::ios::binary);
-        if (!ofs) throw std::runtime_error("파일을 쓸 수 없습니다: " + path);
+        if (!ofs) throw std::runtime_error("Cannot write to file: " + path);
         std::string s = dump(v, pretty);
         ofs.write(s.data(), static_cast<std::streamsize>(s.size()));
     }
 
     static json::value loadValue(const std::string& path) {
         std::ifstream ifs(path, std::ios::binary);
-        if (!ifs) throw std::runtime_error("파일을 열 수 없습니다: " + path);
+        if (!ifs) throw std::runtime_error("Cannot open file: " + path);
         std::string s((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
         boost::system::error_code ec;
         json::value v = json::parse(s, ec);
-        if (ec) throw std::runtime_error("JSON 파싱 실패: " + ec.message());
+        if (ec) throw std::runtime_error("JSON parsing failed: " + ec.message());
         return v;
     }
 };

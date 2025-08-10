@@ -19,9 +19,10 @@ def setup_libclang(path_from_cli: str | None):
 def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("--libclang", default=None)
-    ap.add_argument("--all", action="store_true", help="헤더 전체를 스캔하여 해당 파일에 정의된 모든 struct/class를 기술")
+    ap.add_argument("--all", action="store_true",
+                    help="Scan the entire header and describe all struct/class definitions in that file")
     ap.add_argument("header")
-    ap.add_argument("struct", nargs="?", help="--all 미사용 시 단일 구조체 이름")
+    ap.add_argument("struct", nargs="?", help="Struct name when --all is not used")
     return ap.parse_args()
 
 def norm(p: str) -> str:
@@ -56,7 +57,7 @@ def collect_fields(node):
     return names
 
 def should_skip_name(name: str) -> bool:
-    # 시스템/런타임 내부 심볼 제외
+    # Exclude system/runtime internal symbols
     return name.startswith("_")
 
 def main():
