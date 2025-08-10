@@ -59,9 +59,9 @@ struct NonNamespaceProfile {
    - 변환 방법
       - 현재 구성된 cmake 파일을 이용하여 자동 생성.
       - 또는, `tools/make_*` 스크립트 파일을 이용하여 자동 생성.
-         - `cmd` : `make_describe.cmd "C:\LLVM\bin\libclang.dll" C:\repo\model.hpp C:\repo\describe_all.gen.hpp`
+         - `cmd` : `tools\make_describe.cmd "C:\LLVM\bin\libclang.dll" C:\repo\model.hpp C:\repo\describe_all.gen.hpp`
          - `ps1` : `powershell -ExecutionPolicy Bypass -File tools\make_describe.ps1 -LibClang "C:\LLVM\bin\libclang.dll" -Header .\model.hpp -OutFile .\describe_all.gen.hpp`
-         - `bash` : `make_describe.sh /usr/lib/libclang.so ./model.hpp ./describe_all.gen.hpp`
+         - `bash` : `tools/make_describe.sh /usr/lib/libclang.so ./model.hpp ./describe_all.gen.hpp`
       - 또는, `describe_all.gen.hpp` 파일을 수작업으로 작성.
 
 <br />
