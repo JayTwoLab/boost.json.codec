@@ -67,6 +67,7 @@ BOOST_DESCRIBE_STRUCT(User, (), (name, age, admin, profile, projects))
 } // namespace world
 } // namespace hello
 ```
+   - 위의 `describe_all.gen.hpp` 파일은 수작업으로 작성할 수도 있다. 
 
 <br />
 
