@@ -1,5 +1,4 @@
 # tools/gen_fields.py
-# 사용: python gen_fields.py [--libclang "C:/.../libclang.dll"] <header.hpp> <StructName> [--ns My::NS]
 import sys, os, argparse
 from clang.cindex import Index, Config, CursorKind
 
@@ -19,71 +18,87 @@ def setup_libclang(path_from_cli: str | None):
 
 def parse_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--libclang", default=None, help="full path to libclang.dll")
+    ap.add_argument("--libclang", default=None)
+    ap.add_argument("--all", action="store_true", help="헤더 전체를 스캔하여 해당 파일에 정의된 모든 struct/class를 기술")
     ap.add_argument("header")
-    ap.add_argument("struct")
-    ap.add_argument("--ns", default=None)
+    ap.add_argument("struct", nargs="?", help="--all 미사용 시 단일 구조체 이름")
     return ap.parse_args()
 
-def guess_init(field):
-    tokens = list(field.get_tokens())
-    eq_pos = next((i for i,t in enumerate(tokens) if t.spelling == '='), None)
-    if eq_pos is not None:
-        init_text = ''.join(t.spelling for t in tokens[eq_pos+1:]).strip()
-        if init_text.endswith(';'):
-            init_text = init_text[:-1].strip()
-        return init_text
-    t = field.type.spelling
-    if t.endswith('std::string') or t == 'std::string': return '""'
-    if t.startswith('std::vector') or t.startswith('std::map') or t.startswith('std::unordered_'): return '{}'
-    if t in ('int','long','long long','unsigned','unsigned int','size_t','double','float','bool'):
-        return 'false' if t == 'bool' else '0'
-    return '{}'
+def norm(p: str) -> str:
+    return os.path.normcase(os.path.normpath(os.path.abspath(p)))
 
-def find_struct(tu, name, ns=None):
-    def qname(node):
-        parts=[]; cur=node
-        from clang.cindex import CursorKind as CK
-        while cur and cur.kind != CK.TRANSLATION_UNIT:
-            if cur.spelling: parts.append(cur.spelling)
-            cur = cur.semantic_parent
-        return '::'.join(reversed(parts))
-    from clang.cindex import CursorKind as CK
-    for c in tu.cursor.get_children():
-        stack=[c]
-        while stack:
-            n=stack.pop()
-            if n.kind in (CK.STRUCT_DECL, CK.CLASS_DECL) and n.spelling == name:
-                fq = qname(n)
-                if ns is None or fq.startswith(ns+'::') or fq == ns:
-                    return n
-            stack.extend(list(n.get_children()))
-    return None
+def samefile(a: str, b: str) -> bool:
+    try:
+        return norm(a) == norm(b)
+    except Exception:
+        return False
+
+def iter_structs(tu):
+    def walk(n):
+        for c in n.get_children():
+            yield c
+            yield from walk(c)
+    for n in walk(tu.cursor):
+        if n.kind in (CursorKind.STRUCT_DECL, CursorKind.CLASS_DECL) and n.is_definition() and n.spelling:
+            yield n
+
+def in_this_header(node, header_abs: str) -> bool:
+    loc = node.location
+    if not loc or not loc.file:
+        return False
+    return samefile(loc.file.name, header_abs)
+
+def collect_fields(node):
+    names=[]
+    for f in node.get_children():
+        if f.kind == CursorKind.FIELD_DECL and f.spelling:
+            names.append(f.spelling)
+    return names
+
+def should_skip_name(name: str) -> bool:
+    # 시스템/런타임 내부 심볼 제외
+    return name.startswith("_")
 
 def main():
     args = parse_args()
     setup_libclang(args.libclang)
+
+    header_abs = norm(args.header)
     index = Index.create()
     tu = index.parse(args.header, args=['-x','c++','-std=c++20','-I.'])
 
-    node = find_struct(tu, args.struct, args.ns)
-    if not node:
-        print(f"error: struct {args.struct} not found")
-        sys.exit(2)
-
-    fields = []
-    from clang.cindex import CursorKind as CK
-    for f in node.get_children():
-        if f.kind == CK.FIELD_DECL:
-            fields.append((f.spelling, f.type.spelling, guess_init(f)))
-
-    macro = args.struct.upper() + "_FIELDS"
-
-    # 한 줄로 출력: 백슬래시 라인연속 제거
-    elems = "".join([f"(({n}, {t}, {iinit}))" for (n,t,iinit) in fields])
     print("#pragma once")
-    print(f"#define {macro} {elems}")
-    print(f"ADH_DESCRIBE_EXISTING({args.struct}, {macro})")
+    print("#include <boost/describe.hpp>")
+
+    if args.all:
+        seen = set()
+        for s in iter_structs(tu):
+            if not in_this_header(s, header_abs):
+                continue
+            if not s.spelling or should_skip_name(s.spelling):
+                continue
+            if s.spelling in seen:
+                continue
+            seen.add(s.spelling)
+            fields = collect_fields(s)
+            if not fields:
+                continue
+            joined = ", ".join(fields)
+            print(f"BOOST_DESCRIBE_STRUCT({s.spelling}, (), ({joined}))")
+    else:
+        if not args.struct:
+            print("// error: struct name missing", file=sys.stderr)
+            sys.exit(2)
+        target = None
+        for s in iter_structs(tu):
+            if s.spelling == args.struct and in_this_header(s, header_abs):
+                target = s; break
+        if not target:
+            print(f"// error: struct {args.struct} not found in {args.header}", file=sys.stderr)
+            sys.exit(2)
+        fields = collect_fields(target)
+        joined = ", ".join(fields)
+        print(f"BOOST_DESCRIBE_STRUCT({args.struct}, (), ({joined}))")
 
 if __name__ == "__main__":
     main()

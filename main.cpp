@@ -1,14 +1,15 @@
 // main.cpp
-#include <iostream>
-#include <string>
-#include <vector>
 
 #include "model.hpp"
 #include "AutoDescribe.hpp"
 #include "JsonCodec.hpp"
-#include "Project.gen.hpp"
-#include "Profile.gen.hpp"
-#include "User.gen.hpp"
+
+#include <iostream>
+#include <string>
+#include <vector>
+
+// 생성된 describe/시퀀스 매크로는 마지막에 포함
+#include "describe_all.gen.hpp"
 
 int main() {
     try {
