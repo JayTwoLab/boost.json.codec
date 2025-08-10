@@ -1,31 +1,14 @@
 // main.cpp
-#include "AutoDescribe.hpp"
-#include "JsonCodec.hpp"
-
 #include <iostream>
 #include <string>
 #include <vector>
 
-// 구조체 정의 (구조체 Project 사례)
-// 1단계 구조체 멤버를 정의한다. (매크로 사용)
-#define PROJECT_FIELDS                         \
-    ((title, std::string, ""))                 \
-    ((tags,  std::vector<std::string>, {}))
-// 2단계 구조체 명을 정의한다.  (매크로 사용)
-ADH_MAKE_STRUCT_AND_DESCRIBE(Project, PROJECT_FIELDS)
-
-#define PROFILE_FIELDS                          \
-    ((email, std::string, ""))                  \
-    ((score, double, 0.0))
-ADH_MAKE_STRUCT_AND_DESCRIBE(Profile, PROFILE_FIELDS)
-
-#define USER_FIELDS                                              \
-    ((name,     std::string, ""))                                \
-    ((age,      int,          0))                                \
-    ((admin,    bool,         false))                            \
-    ((profile,  Profile,      Profile{}))                        \
-    ((projects, std::vector<Project>, std::vector<Project>{}))
-ADH_MAKE_STRUCT_AND_DESCRIBE(User,    USER_FIELDS)
+#include "model.hpp"
+#include "AutoDescribe.hpp"
+#include "JsonCodec.hpp"
+#include "Project.gen.hpp"
+#include "Profile.gen.hpp"
+#include "User.gen.hpp"
 
 int main() {
     try {

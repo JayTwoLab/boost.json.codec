@@ -1,7 +1,7 @@
 #pragma once
 
-#ifndef AUTODESCRIBE_HPP
-#define AUTODESCRIBE_HPP
+#ifndef BOOST_AUTO_DESCRIBE_HPP
+#define BOOST_AUTO_DESCRIBE_HPP
 
 // AutoDescribe.hpp
 // "필드 시퀀스"를 한 번만 정의하면 구조체와 BOOST_DESCRIBE_STRUCT를 자동 생성하는 유틸

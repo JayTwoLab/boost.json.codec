@@ -1,14 +1,19 @@
 // JsonCodec.hpp
 // Boost.JSON + Boost.Describe 래퍼 (헤더 전용, Boost 1.88 호환)
 #pragma once
-#include <boost/json.hpp>
-#include <boost/describe.hpp>
-#include <boost/mp11.hpp>
+
+#ifndef BOOST_JSON_CODEC_HPP
+#define BOOST_JSON_CODEC_HPP
+
 #include <type_traits>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <stdexcept>
+
+#include <boost/json.hpp>
+#include <boost/describe.hpp>
+#include <boost/mp11.hpp>
 
 namespace json = boost::json;
 namespace bd   = boost::describe;
@@ -158,3 +163,5 @@ public:
         return v;
     }
 };
+
+#endif
