@@ -1,6 +1,6 @@
 # Boost.JSON AutoDescribe 데모
 
-[View in English](README.md)
+[English](README.md)
 
 ## 개요
 이 프로젝트는 **Boost.JSON**과 **Boost.Describe**를 이용하여 C++ 구조체와 JSON 간의 자동 변환을 구현한 예제입니다.  

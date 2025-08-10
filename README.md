@@ -1,6 +1,6 @@
 # Boost.JSON AutoDescribe Demo
 
-[한국어 설명 보기](README.ko.md)
+[Korean](README.ko.md)
 
 ## Overview
 This project demonstrates an automatic conversion system between C++ structures and JSON using **Boost.JSON** and **Boost.Describe**.  
